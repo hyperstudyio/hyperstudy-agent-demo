@@ -1,0 +1,17 @@
+version: 2
+project_name: hyperstudy-agent
+builds:
+  - main: .
+    binary: hyperstudy-agent
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [arm64, amd64]
+    ignore:
+      - goos: darwin
+        goarch: amd64
+    ldflags:
+      - -s -w -X github.com/hyperstudyio/hyperstudy-agent-demo/cmd.Version={{.Version}}
+archives:
+  - formats: [tar.gz]
+release:
+  draft: false
