@@ -11,9 +11,13 @@ import (
 var Version = "dev"
 
 var RootCmd = &cobra.Command{
-	Use:     "hyperstudy-agent",
-	Short:   "Serve and verify a custom agent endpoint for HyperStudy",
-	Version: Version,
+	Use:          "hyperstudy-agent",
+	Short:        "Serve and verify a custom agent endpoint for HyperStudy",
+	Version:      Version,
+	SilenceUsage: true,
+	// Errors returned from RunE are printed once, below, by Execute.
+	// Without this, cobra ALSO prints them itself, doubling every message.
+	SilenceErrors: true,
 }
 
 func Execute() {

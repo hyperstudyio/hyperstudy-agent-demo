@@ -1,4 +1,3 @@
-// cmd/tunnel.go
 package cmd
 
 import (
@@ -44,10 +43,15 @@ Install it:
 			return err
 		}
 		scanner := bufio.NewScanner(stderr)
+		printed := false
 		for scanner.Scan() {
 			line := scanner.Text()
 			fmt.Fprintln(os.Stderr, line)
+			if printed {
+				continue
+			}
 			if url := tunnelURLRe.FindString(line); url != "" {
+				printed = true
 				fmt.Printf(`
 PUBLIC ENDPOINT
   baseUrl: %s/v1

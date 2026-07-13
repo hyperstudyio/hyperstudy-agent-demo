@@ -1,4 +1,3 @@
-// cmd/verify.go
 package cmd
 
 import (

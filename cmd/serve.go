@@ -1,4 +1,3 @@
-// cmd/serve.go
 package cmd
 
 import (
@@ -66,9 +65,16 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		// Consume Wait() exactly once, in the background, and hand its
+		// result to both the ready-race and the final blocking wait below.
+		// Calling proc.Wait() a second time on an already-reaped process
+		// returns an error, so nothing else may call it.
+		exited := make(chan error, 1)
+		go func() { exited <- proc.Wait() }()
+
 		base := fmt.Sprintf("http://localhost:%d", port)
 		fmt.Println("Waiting for llama-server (first run downloads the model — may take a while)...")
-		if err := llama.WaitReady(base, &http.Client{Timeout: 5 * time.Second}, 30*time.Minute); err != nil {
+		if err := llama.WaitReadyOrExit(base, &http.Client{Timeout: 5 * time.Second}, 30*time.Minute, exited); err != nil {
 			_ = proc.Process.Kill()
 			return err
 		}
@@ -80,7 +86,7 @@ Next:
   hyperstudy-agent verify                     # prove the endpoint meets the contract
   hyperstudy-agent tunnel                     # get a public URL for HyperStudy
 `, lanIP(), port, cfg.APIKey)
-		return proc.Wait()
+		return <-exited
 	},
 }
 

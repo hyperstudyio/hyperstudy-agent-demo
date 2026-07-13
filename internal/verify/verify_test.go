@@ -1,4 +1,3 @@
-// internal/verify/verify_test.go
 package verify
 
 import (
@@ -82,6 +81,21 @@ func TestTextOnlyModelFailsToolCheck(t *testing.T) {
 	}
 	if !strings.Contains(r.Detail, "tool_calls") {
 		t.Fatalf("detail should explain the tool_calls absence: %s", r.Detail)
+	}
+}
+
+func TestToolCallWrongKeyReportsAuthNotServerIssue(t *testing.T) {
+	// Endpoint is otherwise healthy — only the API key is wrong. Before the
+	// fix this reported "chat/completions returned 401", which the README
+	// blamed on model load; it should instead point at the API key.
+	srv := healthyStub(t)
+	defer srv.Close()
+	r := CheckToolCall(srv.URL+"/v1", "wrong-key", srv.Client())
+	if r.Pass {
+		t.Fatal("wrong key must fail the tool-call check")
+	}
+	if !strings.Contains(r.Detail, "endpoint rejected the API key") {
+		t.Fatalf("detail should diagnose a rejected API key, got: %s", r.Detail)
 	}
 }
 

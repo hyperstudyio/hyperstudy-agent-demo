@@ -111,6 +111,7 @@ HyperStudy agents call an OpenAI-compatible `/v1/chat/completions` endpoint **wi
 - **Bare Ollama does not meet this contract**: it doesn't enforce inbound `Authorization` (no auth), silently drops `tool_choice`, serializes requests by default (breaking the concurrency budget below), and truncates context past the model's window without warning. Use `llama-server` (or put a reverse proxy with real auth in front of Ollama) instead.
 - **`mlx-lm`** has no built-in auth either — don't expose it directly to the internet.
 - HyperStudy's platform timeout budget is **60s (default) / 300s (max)** per request, checked against p50/p95 latency under `N`-parallel load by the `concurrency` check.
+- `verify` sends `"model": "default"` in its request body. `llama-server` ignores this field and serves whatever model it loaded, but some servers (e.g. vLLM) reject an unrecognized model name with a 404 — if you're fronting one of those, point `verify` at a request shape carrying your actual served model name.
 
 ## Troubleshooting
 
@@ -122,8 +123,9 @@ Each row corresponds to a `verify` failure message (from `internal/verify/verify
 | `GET /models returned N — not an OpenAI-compatible baseUrl?` | The URL doesn't speak the OpenAI API shape | Double check `--base-url` includes `/v1` and points at `llama-server`, not some other service |
 | `a WRONG key was accepted (N). Your server does not validate Authorization ...` | The server ignores `Authorization` entirely | You're likely running bare Ollama or forgot `--api-key`; use `llama-server --api-key <key>` (this is what `serve` does automatically) |
 | `chat/completions returned N` | The completions endpoint errored | Check server logs; often an out-of-memory or malformed model load |
+| `endpoint rejected the API key — pass --api-key or re-run serve to see the current key` | The tool-call check got a 401/403 | The API key is wrong, not the model/server — pass the correct `--api-key`, or re-run `hyperstudy-agent serve` to print the saved key |
 | `response is not OpenAI-shaped` | The JSON response doesn't match the OpenAI schema | The proxy/server in front of the model isn't OpenAI-compatible |
-| `no tool_calls in response — HyperStudy agents REQUIRE function calling ...` | The model ignored the `tools` param and replied with plain text | The model doesn't support tool calling or its chat template is broken; switch to a Qwen3 GGUF from `unsloth` |
+| `no tool_calls in response — HyperStudy agents REQUIRE function calling ...` | The model ignored the `tools` param and replied with plain text | The model doesn't support tool calling or its chat template is broken; switch to a Qwen3 GGUF from `unsloth`, or update llama.cpp (`brew upgrade llama.cpp`) — tool-call parsing requires a recent build |
 | `tool_calls arguments are not valid JSON` | The model emitted malformed JSON in a tool call | Usually a chat-template or quantization issue; try a different quant or model |
 | `tool_calls arguments ... do not match the respond schema — missing required field "value"` | The model's tool call omitted a required argument | Same as above — try a different model/quant, or increase `--ctx` if the schema is being truncated |
 | `tool_calls arguments ... do not match the respond schema — "value" must be a number, got ...` | The model returned the wrong argument type | Model isn't reliably following the JSON schema; try a larger model in the ladder |

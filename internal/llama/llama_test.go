@@ -10,6 +10,47 @@ import (
 	"time"
 )
 
+func TestWaitReadyOrExitReturnsErrorWhenChildExitsFirst(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(503) // never becomes ready
+	}))
+	defer srv.Close()
+	exited := make(chan error, 1)
+	exited <- errors.New("exit status 1")
+	err := WaitReadyOrExit(srv.URL, srv.Client(), 5*time.Second, exited)
+	if err == nil || !strings.Contains(err.Error(), "llama-server exited before becoming ready") {
+		t.Fatalf("want exit-detection error, got %v", err)
+	}
+}
+
+func TestWaitReadyOrExitSucceedsBeforeChildExits(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+	exited := make(chan error, 1) // never sent — child stays alive
+	if err := WaitReadyOrExit(srv.URL, srv.Client(), 5*time.Second, exited); err != nil {
+		t.Fatalf("want success, got %v", err)
+	}
+}
+
+func TestWaitReadyOrExitDoesNotHangOnClosedChannel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(503)
+	}))
+	defer srv.Close()
+	exited := make(chan error)
+	close(exited) // simulates a child that exited with no captured error
+	start := time.Now()
+	err := WaitReadyOrExit(srv.URL, srv.Client(), 5*time.Second, exited)
+	if err == nil || !strings.Contains(err.Error(), "llama-server exited before becoming ready") {
+		t.Fatalf("want exit-detection error, got %v", err)
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("should have returned promptly on exit signal, took %s", time.Since(start))
+	}
+}
+
 func TestBuildArgs(t *testing.T) {
 	got := BuildArgs(LaunchOpts{HFRef: "org/repo:Q4_K_M", APIKey: "hsa_x"})
 	want := []string{

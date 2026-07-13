@@ -10,8 +10,8 @@ import (
 )
 
 type LaunchOpts struct {
-	HFRef, APIKey        string
-	Port, Parallel, Ctx  int
+	HFRef, APIKey       string
+	Port, Parallel, Ctx int
 }
 
 func (o LaunchOpts) withDefaults() LaunchOpts {
@@ -61,8 +61,20 @@ func Start(bin string, o LaunchOpts) (*exec.Cmd, error) {
 // WaitReady polls /health until the server answers 200. First launch includes
 // the model download, so callers pass a generous timeout.
 func WaitReady(baseURL string, client *http.Client, timeout time.Duration) error {
+	return WaitReadyOrExit(baseURL, client, timeout, nil)
+}
+
+// WaitReadyOrExit polls /health until the server answers 200, racing against
+// exited: a channel the caller feeds with the child process's exec.Cmd.Wait()
+// result. Without this race, a child that dies immediately (bad model ref,
+// port already in use) leaves WaitReady polling a dead port for the full
+// timeout instead of surfacing the real failure. Pass a nil channel to wait
+// on readiness alone (that's what WaitReady does).
+func WaitReadyOrExit(baseURL string, client *http.Client, timeout time.Duration, exited <-chan error) error {
 	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
 		resp, err := client.Get(baseURL + "/health")
 		if err == nil {
 			resp.Body.Close()
@@ -70,7 +82,16 @@ func WaitReady(baseURL string, client *http.Client, timeout time.Duration) error
 				return nil
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		if time.Now().After(deadline) {
+			return fmt.Errorf("llama-server not ready after %s", timeout)
+		}
+		select {
+		case exitErr := <-exited:
+			if exitErr == nil {
+				exitErr = fmt.Errorf("exit status 0")
+			}
+			return fmt.Errorf("llama-server exited before becoming ready — see its output above: %w", exitErr)
+		case <-ticker.C:
+		}
 	}
-	return fmt.Errorf("llama-server not ready after %s", timeout)
 }

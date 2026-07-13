@@ -1,4 +1,3 @@
-// internal/verify/verify.go
 package verify
 
 import (
@@ -91,6 +90,9 @@ func CheckToolCall(baseURL, apiKey string, client *http.Client) Result {
 		return Result{"tool calling", false, err.Error()}
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == 401 || resp.StatusCode == 403 {
+		return Result{"tool calling", false, "endpoint rejected the API key — pass --api-key or re-run serve to see the current key"}
+	}
 	if resp.StatusCode != 200 {
 		return Result{"tool calling", false, fmt.Sprintf("chat/completions returned %d", resp.StatusCode)}
 	}
