@@ -1,69 +1,45 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
+	"regexp"
 	"testing"
 )
 
-func TestDefaultDir(t *testing.T) {
-	dir := DefaultDir()
-	home, _ := os.UserHomeDir()
-	expected := filepath.Join(home, ".hyperstudy")
-	if dir != expected {
-		t.Errorf("DefaultDir() = %q, want %q", dir, expected)
-	}
-}
-
-func TestLoadCreatesMissing(t *testing.T) {
-	tmpdir := t.TempDir()
-	c, err := Load(tmpdir)
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if c == nil {
-		t.Fatal("Load() returned nil")
-	}
-	if c.Key == "" {
-		t.Error("Load() did not auto-generate Key")
-	}
-}
-
-func TestEnsureKeyGenerates(t *testing.T) {
+func TestEnsureKeyGeneratesOnce(t *testing.T) {
 	c := &Config{}
-	if err := c.EnsureKey(); err != nil {
-		t.Fatalf("EnsureKey() error = %v", err)
+	if gen := c.EnsureKey(); !gen {
+		t.Fatal("expected key generation on empty config")
 	}
-	if len(c.Key) != 68 { // "hsa_" (4) + 64 hex chars (32 bytes * 2)
-		t.Errorf("EnsureKey() Key length = %d, want 68", len(c.Key))
+	if !regexp.MustCompile(`^hsa_[0-9a-f]{64}$`).MatchString(c.APIKey) {
+		t.Fatalf("bad key format: %q", c.APIKey)
 	}
-	if c.Key[:4] != "hsa_" {
-		t.Errorf("EnsureKey() Key prefix = %q, want %q", c.Key[:4], "hsa_")
+	first := c.APIKey
+	if gen := c.EnsureKey(); gen {
+		t.Fatal("must not regenerate an existing key")
 	}
-}
-
-func TestEnsureKeyIdempotent(t *testing.T) {
-	c := &Config{}
-	c.EnsureKey()
-	key1 := c.Key
-	c.EnsureKey()
-	if c.Key != key1 {
-		t.Error("EnsureKey() is not idempotent")
+	if c.APIKey != first {
+		t.Fatal("key changed on second EnsureKey")
 	}
 }
 
-func TestSaveLoad(t *testing.T) {
-	tmpdir := t.TempDir()
-	c := &Config{Key: "hsa_deadbeef"}
-	if err := c.Save(tmpdir); err != nil {
-		t.Fatalf("Save() error = %v", err)
+func TestSaveLoadRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	c := &Config{APIKey: "hsa_abc", Model: "m", Port: 8080}
+	if err := c.Save(dir); err != nil {
+		t.Fatal(err)
 	}
-
-	c2, err := Load(tmpdir)
+	got, err := Load(dir)
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatal(err)
 	}
-	if c2.Key != c.Key {
-		t.Errorf("Load() Key = %q, want %q", c2.Key, c.Key)
+	if *got != *c {
+		t.Fatalf("round trip mismatch: %+v != %+v", got, c)
+	}
+}
+
+func TestLoadMissingIsZero(t *testing.T) {
+	got, err := Load(t.TempDir())
+	if err != nil || got.APIKey != "" {
+		t.Fatalf("want zero config, got %+v err %v", got, err)
 	}
 }

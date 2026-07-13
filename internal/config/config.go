@@ -4,75 +4,62 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
 
 type Config struct {
-	Key string `json:"key"`
+	APIKey string `json:"apiKey"`
+	Model  string `json:"model,omitempty"`
+	Port   int    `json:"port,omitempty"`
 }
 
 func DefaultDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".hyperstudy"
+		return ".hyperstudy-agent"
 	}
-	return filepath.Join(home, ".hyperstudy")
+	return filepath.Join(home, ".hyperstudy-agent")
 }
 
 func Load(dir string) (*Config, error) {
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	b, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return &Config{}, nil
+	}
+	if err != nil {
 		return nil, err
 	}
-
-	path := filepath.Join(dir, "config.json")
-	data, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
+	var c Config
+	if err := json.Unmarshal(b, &c); err != nil {
 		return nil, err
 	}
-
-	c := &Config{}
-	if len(data) > 0 {
-		if err := json.Unmarshal(data, c); err != nil {
-			return nil, err
-		}
-	}
-
-	if c.Key == "" {
-		if err := c.EnsureKey(); err != nil {
-			return nil, err
-		}
-		if err := c.Save(dir); err != nil {
-			return nil, err
-		}
-	}
-
-	return c, nil
+	return &c, nil
 }
 
 func (c *Config) Save(dir string) error {
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-
-	data, err := json.MarshalIndent(c, "", "  ")
+	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
 	}
-
-	path := filepath.Join(dir, "config.json")
-	return os.WriteFile(path, data, 0600)
+	return os.WriteFile(filepath.Join(dir, "config.json"), b, 0o600)
 }
 
-func (c *Config) EnsureKey() error {
-	if c.Key != "" {
-		return nil
+// EnsureKey generates an hsa_-prefixed key if none is set. The key is what the
+// researcher pastes into HyperStudy Settings AND what llama-server enforces.
+func (c *Config) EnsureKey() bool {
+	if c.APIKey != "" {
+		return false
 	}
-
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
-		return err
+		panic(err) // crypto/rand failure is unrecoverable
 	}
-	c.Key = "hsa_" + hex.EncodeToString(buf)
-	return nil
+	c.APIKey = "hsa_" + hex.EncodeToString(buf)
+	return true
 }
