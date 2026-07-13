@@ -117,6 +117,13 @@ func CheckToolCall(baseURL, apiKey string, client *http.Client) Result {
 	if json.Unmarshal([]byte(tcs[0].Function.Arguments), &args) != nil {
 		return Result{"tool calling", false, "tool_calls arguments are not valid JSON"}
 	}
+	value, ok := args["value"]
+	if !ok {
+		return Result{"tool calling", false, fmt.Sprintf("tool_calls arguments %s do not match the respond schema — missing required field \"value\"", tcs[0].Function.Arguments)}
+	}
+	if _, ok := value.(float64); !ok {
+		return Result{"tool calling", false, fmt.Sprintf("tool_calls arguments %s do not match the respond schema — \"value\" must be a number, got %T", tcs[0].Function.Arguments, value)}
+	}
 	return Result{"tool calling", true, fmt.Sprintf("model called %s(%s)", tcs[0].Function.Name, tcs[0].Function.Arguments)}
 }
 
@@ -153,8 +160,19 @@ func CheckConcurrency(baseURL, apiKey string, n int, client *http.Client) Result
 			return Result{name, false, fmt.Sprintf("request failed under load: %v", e)}
 		}
 	}
-	sort.Slice(durs, func(a, b int) bool { return durs[a] < durs[b] })
-	p50, p95 := durs[n/2], durs[(n*95)/100]
+	return concurrencyResult(name, durs)
+}
+
+// concurrencyResult aggregates a batch of request durations into a p50/p95
+// summary and applies the platform's timeout thresholds. Pulled out of
+// CheckConcurrency so the threshold branches (warn at 60s, fail at 300s) can
+// be exercised directly with fabricated durations, without real sleeps.
+func concurrencyResult(name string, durs []time.Duration) Result {
+	n := len(durs)
+	sorted := make([]time.Duration, n)
+	copy(sorted, durs)
+	sort.Slice(sorted, func(a, b int) bool { return sorted[a] < sorted[b] })
+	p50, p95 := sorted[n/2], sorted[(n*95)/100]
 	detail := fmt.Sprintf("p50=%s p95=%s", p50.Round(time.Millisecond), p95.Round(time.Millisecond))
 	if p95 > 300*time.Second {
 		return Result{name, false, detail + " — exceeds the platform's 300s maximum timeout"}
