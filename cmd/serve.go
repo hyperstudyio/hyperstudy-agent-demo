@@ -33,6 +33,7 @@ var serveCmd = &cobra.Command{
 		parallel, _ := cmd.Flags().GetInt("parallel")
 		ctx, _ := cmd.Flags().GetInt("ctx")
 		regen, _ := cmd.Flags().GetBool("regenerate-key")
+		noThinking, _ := cmd.Flags().GetBool("no-thinking")
 
 		dir := config.DefaultDir()
 		cfg, err := config.Load(dir)
@@ -66,7 +67,7 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 		fmt.Printf("Hardware: %s/%s ram=%dGB vram=%dGB spark=%v\nModel:    %s (%s)\n\n", info.OS, info.Arch, info.RAMGB, info.VRAMGB, info.IsSpark(), name, ref)
-		proc, err := llama.Start(bin, llama.LaunchOpts{HFRef: ref, APIKey: cfg.APIKey, Port: port, Parallel: parallel, Ctx: ctx})
+		proc, err := llama.Start(bin, llama.LaunchOpts{HFRef: ref, APIKey: cfg.APIKey, Port: port, Parallel: parallel, Ctx: ctx, NoThinking: noThinking})
 		if err != nil {
 			return err
 		}
@@ -104,5 +105,6 @@ func init() {
 	serveCmd.Flags().Int("parallel", 8, "concurrent slots (-np)")
 	serveCmd.Flags().Int("ctx", 32768, "total context shared across slots (-c)")
 	serveCmd.Flags().Bool("regenerate-key", false, "rotate the API key")
+	serveCmd.Flags().Bool("no-thinking", false, "disable reasoning-model 'thinking' (faster; for models like Gemma 4/Qwen3 that reason before responding)")
 	RootCmd.AddCommand(serveCmd)
 }

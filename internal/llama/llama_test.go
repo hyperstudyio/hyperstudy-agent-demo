@@ -64,6 +64,45 @@ func TestBuildArgs(t *testing.T) {
 	}
 }
 
+func TestBuildArgsWithNoThinkingTrue(t *testing.T) {
+	got := BuildArgs(LaunchOpts{HFRef: "org/repo:Q4_K_M", APIKey: "hsa_x", NoThinking: true})
+	joined := strings.Join(got, " ")
+	if !strings.Contains(joined, "--chat-template-kwargs") {
+		t.Fatalf("missing --chat-template-kwargs in %v", got)
+	}
+	if !strings.Contains(joined, `{"enable_thinking":false}`) {
+		t.Fatalf("missing {\"enable_thinking\":false} in %v", got)
+	}
+	// Verify order: --chat-template-kwargs should come before the JSON arg
+	templateIdx := -1
+	jsonIdx := -1
+	for i, arg := range got {
+		if arg == "--chat-template-kwargs" {
+			templateIdx = i
+		}
+		if arg == `{"enable_thinking":false}` {
+			jsonIdx = i
+		}
+	}
+	if templateIdx == -1 || jsonIdx == -1 {
+		t.Fatalf("flags not found in args: %v", got)
+	}
+	if templateIdx+1 != jsonIdx {
+		t.Fatalf("--chat-template-kwargs and JSON arg not consecutive in %v", got)
+	}
+}
+
+func TestBuildArgsWithNoThinkingFalse(t *testing.T) {
+	got := BuildArgs(LaunchOpts{HFRef: "org/repo:Q4_K_M", APIKey: "hsa_x", NoThinking: false})
+	joined := strings.Join(got, " ")
+	if strings.Contains(joined, "--chat-template-kwargs") {
+		t.Fatalf("should not include --chat-template-kwargs when NoThinking is false")
+	}
+	if strings.Contains(joined, `{"enable_thinking":false}`) {
+		t.Fatalf("should not include {\"enable_thinking\":false} when NoThinking is false")
+	}
+}
+
 func TestBuildArgsOverrides(t *testing.T) {
 	got := BuildArgs(LaunchOpts{HFRef: "r:Q", APIKey: "k", Port: 9000, Parallel: 4, Ctx: 65536})
 	joined := strings.Join(got, " ")

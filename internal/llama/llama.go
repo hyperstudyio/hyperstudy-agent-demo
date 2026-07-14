@@ -12,6 +12,7 @@ import (
 type LaunchOpts struct {
 	HFRef, APIKey       string
 	Port, Parallel, Ctx int
+	NoThinking          bool
 }
 
 func (o LaunchOpts) withDefaults() LaunchOpts {
@@ -32,12 +33,16 @@ func (o LaunchOpts) withDefaults() LaunchOpts {
 // KV-cache quantization is deliberately never emitted (degrades tool calling).
 func BuildArgs(o LaunchOpts) []string {
 	o = o.withDefaults()
-	return []string{
+	args := []string{
 		"-hf", o.HFRef,
 		"--api-key", o.APIKey,
 		"--host", "0.0.0.0", "--port", strconv.Itoa(o.Port),
 		"-np", strconv.Itoa(o.Parallel), "-kvu", "-c", strconv.Itoa(o.Ctx),
 	}
+	if o.NoThinking {
+		args = append(args, "--chat-template-kwargs", `{"enable_thinking":false}`)
+	}
+	return args
 }
 
 func Find(look func(string) (string, error)) (string, error) {
