@@ -2,6 +2,35 @@
 
 `hyperstudy-agent` turns your own hardware — a Mac, a workstation GPU, or a DGX Spark — into a [HyperStudy](https://docs.hyperstudy.io)-compatible LLM inference endpoint for running custom AI agent participants in your experiments. It detects your hardware, launches a properly-configured `llama-server`, proves the endpoint meets HyperStudy's contract, and exposes it publicly so you can paste the URL straight into HyperStudy Settings.
 
+## Install
+
+Pick one:
+
+**A. Install script** (downloads a prebuilt binary into `/usr/local/bin`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hyperstudyio/hyperstudy-agent-demo/main/install.sh | bash
+```
+
+**B. Download a binary** from the [releases page](https://github.com/hyperstudyio/hyperstudy-agent-demo/releases) — `darwin/arm64`, `linux/amd64`, or `linux/arm64` — untar it, and put `hyperstudy-agent` on your `PATH`.
+
+**C. Build from source** (needs [Go](https://go.dev/dl/) 1.26+):
+
+```bash
+git clone https://github.com/hyperstudyio/hyperstudy-agent-demo
+cd hyperstudy-agent-demo
+go build -o hyperstudy-agent .
+sudo mv hyperstudy-agent /usr/local/bin/   # optional — or run ./hyperstudy-agent in place
+```
+
+Or as a one-liner (installs to `$(go env GOPATH)/bin` as `hyperstudy-agent-demo`):
+
+```bash
+go install github.com/hyperstudyio/hyperstudy-agent-demo@latest
+```
+
+**Prerequisite:** the `serve` command also needs `llama-server` (llama.cpp) — `brew install llama.cpp` on macOS, or see [Hardware notes](#hardware-notes) for Linux/GPU/Spark. `tunnel` needs `cloudflared`. Verify your install with `hyperstudy-agent --version`.
+
 ## Quickstart
 
 Three commands: `serve` a model, `verify` the endpoint, `tunnel` it to the internet.
@@ -171,11 +200,3 @@ When this endpoint is used as a HyperStudy custom agent, the **full experiment p
 ## Setup in HyperStudy
 
 Once `verify` passes, go to **Settings → API Keys → Custom Agent Endpoint** in HyperStudy and paste in the `baseUrl` and API key printed by `serve` (or `tunnel`, if running remotely).
-
-## Installation
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/hyperstudyio/hyperstudy-agent-demo/main/install.sh | bash
-```
-
-Or download a release binary directly from the [releases page](https://github.com/hyperstudyio/hyperstudy-agent-demo/releases). Supported platforms: `darwin/arm64`, `linux/amd64`, `linux/arm64`.
