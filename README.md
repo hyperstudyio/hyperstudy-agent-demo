@@ -103,6 +103,24 @@ hyperstudy-agent serve --port 9090
 hyperstudy-agent serve --regenerate-key
 ```
 
+### Model presets
+
+`--model` also accepts a short preset name instead of a raw `-hf` ref:
+
+```bash
+hyperstudy-agent serve --model qwen3.6-moe
+```
+
+| Preset key | Model | Size (approx) | Tool calling |
+|---|---|---|---|
+| `qwen3.6-moe` | Qwen3.6-35B-A3B (MoE) | ~22GB | Reliable |
+| `gemma4-moe` | Gemma 4 26B-A4B (MoE) | ~17GB | Caveated — see below |
+| `gemma4-4b` | Gemma 4 E4B | ~5GB | Caveated — see below |
+
+> **Gemma 4 tool-calling caveat:** Gemma 4's llama.cpp tool-call parser (peg-gemma4) has an open bug ([ggml-org/llama.cpp#25072](https://github.com/ggml-org/llama.cpp/issues/25072)). Run `hyperstudy-agent verify` against either Gemma preset before relying on it for function calling — Qwen3.6 (`qwen3.6-moe`) is the most reliable choice for tool calling today. Also note `gemma4-4b` is Gemma 4 **E4B** (elastic MatFormer, ~4.5B effective parameters), not a dense 4B model — there is no dense Gemma 4 4B.
+
+Raw `-hf` refs (e.g. `unsloth/GLM-4.7-Flash-GGUF:UD-Q4_K_XL`) still work unchanged, and omitting `--model` keeps the hardware auto-detect ladder as the default (see [Hardware notes](#hardware-notes)).
+
 ## Endpoint contract
 
 HyperStudy agents call an OpenAI-compatible `/v1/chat/completions` endpoint **with function calling**. Every agent turn submits its response via a `respond` tool call, not free-text — a model or server that never returns `tool_calls` cannot be used as a HyperStudy custom agent endpoint, regardless of how good its text output is.

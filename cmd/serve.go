@@ -46,11 +46,16 @@ var serveCmd = &cobra.Command{
 			fmt.Printf("Generated API key (saved to %s/config.json):\n  %s\n\n", dir, cfg.APIKey)
 		}
 		info, _ := hw.Detect(hw.ExecRunner)
-		ref := modelFlag
-		name := ref
-		if ref == "" {
+		var ref, name string
+		if modelFlag == "" {
 			spec := models.Pick(info)
 			ref, name = spec.HFRef, spec.Name
+		} else {
+			spec, isPreset := models.Resolve(modelFlag)
+			ref, name = spec.HFRef, spec.Name
+			if isPreset && (modelFlag == "gemma4-moe" || modelFlag == "gemma4-4b") {
+				fmt.Fprintln(cmd.ErrOrStderr(), "Note: Gemma 4's llama.cpp tool-call parser (peg-gemma4) has an open bug (ggml-org/llama.cpp#25072); verify tool calling with `hyperstudy-agent verify` before relying on it. Qwen3.6 is the most reliable for function calling.")
+			}
 		}
 		cfg.Model, cfg.Port = ref, port
 		if err := cfg.Save(dir); err != nil {
@@ -91,7 +96,7 @@ Next:
 }
 
 func init() {
-	serveCmd.Flags().String("model", "", "override the model (-hf ref, e.g. unsloth/Qwen3-14B-GGUF:Q4_K_M)")
+	serveCmd.Flags().String("model", "", "override the model: a preset (qwen3.6-moe, gemma4-moe, gemma4-4b) or a raw -hf ref (unsloth/Repo-GGUF:Q4_K_M)")
 	serveCmd.Flags().Int("port", 8080, "port to serve on")
 	serveCmd.Flags().Int("parallel", 8, "concurrent slots (-np)")
 	serveCmd.Flags().Int("ctx", 32768, "total context shared across slots (-c)")
