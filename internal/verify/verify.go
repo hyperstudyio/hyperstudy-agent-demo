@@ -33,8 +33,11 @@ var respondTool = map[string]any{
 
 func completionReq(baseURL, apiKey string, withTool bool) (*http.Request, error) {
 	body := map[string]any{
-		"model":      "default",
-		"max_tokens": 64,
+		"model": "default",
+		// 512 not 64: reasoning models emit chain-of-thought before the tool
+		// call; a low budget truncates mid-thought and yields a false
+		// tool-calling failure.
+		"max_tokens": 512,
 		"messages":   []any{map[string]any{"role": "user", "content": "Use the respond tool to submit the number 2."}},
 	}
 	if withTool {
@@ -106,6 +109,7 @@ func CheckToolCall(baseURL, apiKey string, client *http.Client) Result {
 					}
 				} `json:"tool_calls"`
 			}
+			FinishReason string `json:"finish_reason"`
 		}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || len(out.Choices) == 0 {
@@ -113,6 +117,9 @@ func CheckToolCall(baseURL, apiKey string, client *http.Client) Result {
 	}
 	tcs := out.Choices[0].Message.ToolCalls
 	if len(tcs) == 0 {
+		if out.Choices[0].FinishReason == "length" {
+			return Result{"tool calling", false, "response hit the token limit before emitting a tool call — the model may be a reasoning model; this is a verify-side budget issue, not necessarily an endpoint problem"}
+		}
 		return Result{"tool calling", false, "no tool_calls in response — HyperStudy agents REQUIRE function calling. The model may not support tools or its chat template is broken; try a Qwen3 GGUF from unsloth."}
 	}
 	var args map[string]any

@@ -54,7 +54,7 @@ var serveCmd = &cobra.Command{
 			spec, isPreset := models.Resolve(modelFlag)
 			ref, name = spec.HFRef, spec.Name
 			if isPreset && (modelFlag == "gemma4-moe" || modelFlag == "gemma4-4b") {
-				fmt.Fprintln(cmd.ErrOrStderr(), "Note: Gemma 4's llama.cpp tool-call parser (peg-gemma4) has an open bug (ggml-org/llama.cpp#25072); verify tool calling with `hyperstudy-agent verify` before relying on it. Qwen3.6 is the most reliable for function calling.")
+				fmt.Fprintln(cmd.ErrOrStderr(), "Note: Gemma 4 is a reasoning model — give agents adequate max_tokens (>=256) so it doesn't exhaust its budget before the tool call. Single-turn tool calling works well; a known multi-turn issue (llama.cpp#25072) doesn't affect HyperStudy's single-turn agent decisions. Run `hyperstudy-agent verify` to confirm on your hardware.")
 			}
 		}
 		cfg.Model, cfg.Port = ref, port

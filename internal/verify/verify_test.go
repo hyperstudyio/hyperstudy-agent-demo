@@ -84,6 +84,55 @@ func TestTextOnlyModelFailsToolCheck(t *testing.T) {
 	}
 }
 
+func TestToolCallLengthFinishNoToolCallsReportsBudgetIssue(t *testing.T) {
+	// A reasoning model (Gemma 4, Qwen3 thinking, etc.) can exhaust the token
+	// budget mid chain-of-thought before ever emitting the tool call. That is
+	// a verify-side budget issue, not evidence the endpoint lacks tool support
+	// — it must be distinguished from the "model may not support tools" case.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{
+			"message":       map[string]any{"content": "Let me think about this step by step..."},
+			"finish_reason": "length",
+		}}})
+	}))
+	defer srv.Close()
+	r := CheckToolCall(srv.URL+"/v1", key, srv.Client())
+	if r.Pass {
+		t.Fatal("truncated-before-tool-call response must FAIL the tool-call check")
+	}
+	if !strings.Contains(r.Detail, "token limit") {
+		t.Fatalf("detail should diagnose a token-limit truncation, got: %s", r.Detail)
+	}
+	if strings.Contains(r.Detail, "may not support tools") {
+		t.Fatalf("detail should NOT claim the model lacks tool support when it was truncated: %s", r.Detail)
+	}
+}
+
+func TestToolCallRequestUsesFiveHundredTwelveTokenBudget(t *testing.T) {
+	// Reasoning models emit chain-of-thought before the tool call; 64 tokens
+	// was too low and produced false tool-calling failures. Assert the
+	// request body actually carries the raised budget.
+	var gotMaxTokens float64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			MaxTokens float64 `json:"max_tokens"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		gotMaxTokens = req.MaxTokens
+		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{
+			"content": "", "tool_calls": []any{map[string]any{
+				"id": "c1", "type": "function",
+				"function": map[string]any{"name": "respond", "arguments": `{"value":2}`},
+			}},
+		}, "finish_reason": "tool_calls"}}})
+	}))
+	defer srv.Close()
+	CheckToolCall(srv.URL+"/v1", key, srv.Client())
+	if gotMaxTokens != 512 {
+		t.Fatalf("want max_tokens=512, got %v", gotMaxTokens)
+	}
+}
+
 func TestToolCallWrongKeyReportsAuthNotServerIssue(t *testing.T) {
 	// Endpoint is otherwise healthy — only the API key is wrong. Before the
 	// fix this reported "chat/completions returned 401", which the README

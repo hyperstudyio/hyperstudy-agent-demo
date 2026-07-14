@@ -113,11 +113,11 @@ hyperstudy-agent serve --model qwen3.6-moe
 
 | Preset key | Model | Size (approx) | Tool calling |
 |---|---|---|---|
-| `qwen3.6-moe` | Qwen3.6-35B-A3B (MoE) | ~22GB | Reliable |
-| `gemma4-moe` | Gemma 4 26B-A4B (MoE) | ~17GB | Caveated — see below |
-| `gemma4-4b` | Gemma 4 E4B | ~5GB | Caveated — see below |
+| `qwen3.6-moe` | Qwen3.6-35B-A3B (MoE) | ~22GB | Reliable, no reasoning overhead |
+| `gemma4-moe` | Gemma 4 26B-A4B (MoE) | ~17GB | Works — see note below |
+| `gemma4-4b` | Gemma 4 E4B | ~5GB | Works — see note below |
 
-> **Gemma 4 tool-calling caveat:** Gemma 4's llama.cpp tool-call parser (peg-gemma4) has an open bug ([ggml-org/llama.cpp#25072](https://github.com/ggml-org/llama.cpp/issues/25072)). Run `hyperstudy-agent verify` against either Gemma preset before relying on it for function calling — Qwen3.6 (`qwen3.6-moe`) is the most reliable choice for tool calling today. Also note `gemma4-4b` is Gemma 4 **E4B** (elastic MatFormer, ~4.5B effective parameters), not a dense 4B model — there is no dense Gemma 4 4B.
+> **Gemma 4 tool-calling note:** Gemma 4 is a reasoning model — it thinks before calling a tool, so it needs adequate `max_tokens` (agents should allow >=256, ideally 512) or it may exhaust the budget before emitting the call. With that headroom, single-turn tool calling works well (empirically 8/8 clean tool calls at a 512-token budget). There is a known llama.cpp issue ([ggml-org/llama.cpp#25072](https://github.com/ggml-org/llama.cpp/issues/25072)), but it affects only **multi-turn** tool-calling sessions (a second turn after a tool response is fed back) — HyperStudy's agent decisions are single-turn and are not affected. Run `hyperstudy-agent verify` to confirm on your hardware. Qwen3.6 (`qwen3.6-moe`) remains the simplest choice if you want to avoid reasoning-token overhead entirely. Also note `gemma4-4b` is Gemma 4 **E4B** (elastic MatFormer, ~4.5B effective parameters), not a dense 4B model — there is no dense Gemma 4 4B.
 
 Raw `-hf` refs (e.g. `unsloth/GLM-4.7-Flash-GGUF:UD-Q4_K_XL`) still work unchanged, and omitting `--model` keeps the hardware auto-detect ladder as the default (see [Hardware notes](#hardware-notes)).
 
