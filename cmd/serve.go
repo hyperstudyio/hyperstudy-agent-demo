@@ -85,11 +85,14 @@ var serveCmd = &cobra.Command{
 		}
 		fmt.Printf(`
 READY
-  baseUrl (LAN):   http://%s:%d/v1
-  API key:         %s
-Next:
-  hyperstudy-agent verify                     # prove the endpoint meets the contract
-  hyperstudy-agent tunnel                     # get a public URL for HyperStudy
+  local URL:   http://%s:%d/v1   (LAN only — works for a HyperStudy running on this network)
+  API key:     %s
+
+To connect to hosted HyperStudy (app.hyperstudy.io / dev), you need a PUBLIC https URL — the
+LAN URL above will be REJECTED ("must use https" / private address). Get one with:
+
+  hyperstudy-agent tunnel      # prints a public https://...trycloudflare.com URL — paste THAT into Settings
+  hyperstudy-agent verify      # optional: prove the endpoint meets the contract first
 `, lanIP(), port, cfg.APIKey)
 		return <-exited
 	},
