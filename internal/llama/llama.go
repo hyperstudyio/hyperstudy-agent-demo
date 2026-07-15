@@ -2,9 +2,11 @@ package llama
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -12,7 +14,9 @@ import (
 type LaunchOpts struct {
 	HFRef, APIKey       string
 	Port, Parallel, Ctx int
-	NoThinking          bool
+	// MTPFile is a local path to the model's Multi-Token-Prediction draft GGUF.
+	// When set, BuildArgs enables lossless speculative decoding (draft-mtp).
+	MTPFile string
 }
 
 func (o LaunchOpts) withDefaults() LaunchOpts {
@@ -39,10 +43,52 @@ func BuildArgs(o LaunchOpts) []string {
 		"--host", "0.0.0.0", "--port", strconv.Itoa(o.Port),
 		"-np", strconv.Itoa(o.Parallel), "-kvu", "-c", strconv.Itoa(o.Ctx),
 	}
-	if o.NoThinking {
-		args = append(args, "--chat-template-kwargs", `{"enable_thinking":false}`)
+	if o.MTPFile != "" {
+		// Co-trained MTP head drafts tokens the main model verifies in one pass.
+		// Lossless (output identical to normal decoding); n-max 3 is the sweet
+		// spot for gemma4's acceptance rate on unified-memory hardware.
+		args = append(args, "--spec-type", "draft-mtp", "-md", o.MTPFile, "--spec-draft-n-max", "3")
 	}
 	return args
+}
+
+// EnsureFile downloads url into dest unless dest already exists (non-empty),
+// returning dest. Used to fetch MTP draft GGUFs that Start passes to
+// llama-server via -md. The write is atomic (download to .part, then rename)
+// so an interrupted download never leaves a truncated file that looks cached.
+func EnsureFile(url, dest string, client *http.Client) (string, error) {
+	if fi, err := os.Stat(dest); err == nil && fi.Size() > 0 {
+		return dest, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return "", err
+	}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
+	}
+	tmp := dest + ".part"
+	out, err := os.Create(tmp)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return "", err
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		return "", err
+	}
+	return dest, nil
 }
 
 func Find(look func(string) (string, error)) (string, error) {

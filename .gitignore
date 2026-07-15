@@ -1,2 +1,3 @@
 dist/
 *.gguf
+/hyperstudy-agent

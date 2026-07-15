@@ -130,6 +130,9 @@ hyperstudy-agent serve --port 9090
 
 # Rotate the saved API key
 hyperstudy-agent serve --regenerate-key
+
+# Speculative decoding on the gemma4 presets (lossless, ~1.4-2.3x faster)
+hyperstudy-agent serve --model gemma4-moe --mtp
 ```
 
 ### Model presets
@@ -149,6 +152,23 @@ hyperstudy-agent serve --model qwen3.6-moe
 > **Gemma 4 tool-calling note:** Gemma 4 is a reasoning model — it thinks before calling a tool, so it needs adequate `max_tokens` (agents should allow >=256, ideally 512) or it may exhaust the budget before emitting the call. With that headroom, single-turn tool calling works well (empirically 8/8 clean tool calls at a 512-token budget). There is a known llama.cpp issue ([ggml-org/llama.cpp#25072](https://github.com/ggml-org/llama.cpp/issues/25072)), but it affects only **multi-turn** tool-calling sessions (a second turn after a tool response is fed back) — HyperStudy's agent decisions are single-turn and are not affected. Run `hyperstudy-agent verify` to confirm on your hardware. Qwen3.6 (`qwen3.6-moe`) remains the simplest choice if you want to avoid reasoning-token overhead entirely. Also note `gemma4-4b` is Gemma 4 **E4B** (elastic MatFormer, ~4.5B effective parameters), not a dense 4B model — there is no dense Gemma 4 4B.
 
 Raw `-hf` refs (e.g. `unsloth/GLM-4.7-Flash-GGUF:UD-Q4_K_XL`) still work unchanged, and omitting `--model` keeps the hardware auto-detect ladder as the default (see [Hardware notes](#hardware-notes)).
+
+### Speculative decoding (MTP) — recommended for gemma4
+
+The gemma4 presets ship a co-trained **Multi-Token-Prediction** draft head. Enabling it makes a small, fast drafter propose several tokens that the main model verifies in a single pass — **lossless** (output is identical to normal decoding, so tool-calling and reasoning quality are unaffected) and substantially faster, especially on memory-bandwidth-bound hardware like the DGX Spark where the big model's compute would otherwise sit idle during token generation.
+
+```bash
+hyperstudy-agent serve --model gemma4-moe --mtp
+```
+
+`--mtp` fetches the ~0.5GB draft GGUF once (cached under `~/.hyperstudy-agent/mtp/`) and passes it to `llama-server` as `--spec-type draft-mtp`. Measured on a DGX Spark (GB10) with `gemma4-moe`:
+
+| Workload | Baseline | With `--mtp` | Speedup |
+|---|---|---|---|
+| Free-form generation | ~36 t/s | ~50–61 t/s | 1.4–1.7× |
+| Long-context agent calls (structured output, ~5k ctx) | ~33 t/s | ~74 t/s | **2.3×** |
+
+The speedup tracks how predictable the output is, so **HyperStudy's structured, long-context agent turns see the largest gains**. The `--mtp` flag applies to the `gemma4-moe` and `gemma4-4b` presets (Qwen3.6 ships no MTP drafter). For any other model, supply your own draft with `--mtp-file <path.gguf>`.
 
 ## Endpoint contract
 
