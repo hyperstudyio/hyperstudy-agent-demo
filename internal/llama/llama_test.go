@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -64,45 +65,6 @@ func TestBuildArgs(t *testing.T) {
 	}
 }
 
-func TestBuildArgsWithNoThinkingTrue(t *testing.T) {
-	got := BuildArgs(LaunchOpts{HFRef: "org/repo:Q4_K_M", APIKey: "hsa_x", NoThinking: true})
-	joined := strings.Join(got, " ")
-	if !strings.Contains(joined, "--chat-template-kwargs") {
-		t.Fatalf("missing --chat-template-kwargs in %v", got)
-	}
-	if !strings.Contains(joined, `{"enable_thinking":false}`) {
-		t.Fatalf("missing {\"enable_thinking\":false} in %v", got)
-	}
-	// Verify order: --chat-template-kwargs should come before the JSON arg
-	templateIdx := -1
-	jsonIdx := -1
-	for i, arg := range got {
-		if arg == "--chat-template-kwargs" {
-			templateIdx = i
-		}
-		if arg == `{"enable_thinking":false}` {
-			jsonIdx = i
-		}
-	}
-	if templateIdx == -1 || jsonIdx == -1 {
-		t.Fatalf("flags not found in args: %v", got)
-	}
-	if templateIdx+1 != jsonIdx {
-		t.Fatalf("--chat-template-kwargs and JSON arg not consecutive in %v", got)
-	}
-}
-
-func TestBuildArgsWithNoThinkingFalse(t *testing.T) {
-	got := BuildArgs(LaunchOpts{HFRef: "org/repo:Q4_K_M", APIKey: "hsa_x", NoThinking: false})
-	joined := strings.Join(got, " ")
-	if strings.Contains(joined, "--chat-template-kwargs") {
-		t.Fatalf("should not include --chat-template-kwargs when NoThinking is false")
-	}
-	if strings.Contains(joined, `{"enable_thinking":false}`) {
-		t.Fatalf("should not include {\"enable_thinking\":false} when NoThinking is false")
-	}
-}
-
 func TestBuildArgsOverrides(t *testing.T) {
 	got := BuildArgs(LaunchOpts{HFRef: "r:Q", APIKey: "k", Port: 9000, Parallel: 4, Ctx: 65536})
 	joined := strings.Join(got, " ")
@@ -110,6 +72,63 @@ func TestBuildArgsOverrides(t *testing.T) {
 		if !strings.Contains(joined, frag) {
 			t.Fatalf("missing %q in %q", frag, joined)
 		}
+	}
+}
+
+func TestBuildArgsWithMTP(t *testing.T) {
+	got := BuildArgs(LaunchOpts{HFRef: "org/repo:Q4_K_M", APIKey: "hsa_x", MTPFile: "/tmp/mtp.gguf"})
+	// The four MTP args must appear together and in order.
+	joined := strings.Join(got, " ")
+	if !strings.Contains(joined, "--spec-type draft-mtp -md /tmp/mtp.gguf --spec-draft-n-max 3") {
+		t.Fatalf("missing/wrong MTP args in %v", got)
+	}
+}
+
+func TestBuildArgsWithoutMTP(t *testing.T) {
+	got := BuildArgs(LaunchOpts{HFRef: "org/repo:Q4_K_M", APIKey: "hsa_x"})
+	if strings.Contains(strings.Join(got, " "), "draft-mtp") {
+		t.Fatalf("should not emit MTP args when MTPFile is empty: %v", got)
+	}
+}
+
+func TestEnsureFileDownloadsThenCaches(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(200)
+		w.Write([]byte("DRAFT-GGUF-BYTES"))
+	}))
+	defer srv.Close()
+	dest := t.TempDir() + "/sub/mtp.gguf"
+
+	p, err := EnsureFile(srv.URL, dest, srv.Client())
+	if err != nil || p != dest {
+		t.Fatalf("first download: p=%q err=%v", p, err)
+	}
+	b, _ := os.ReadFile(dest)
+	if string(b) != "DRAFT-GGUF-BYTES" {
+		t.Fatalf("content mismatch: %q", b)
+	}
+	// Second call must NOT hit the network (file already present).
+	if _, err := EnsureFile(srv.URL, dest, srv.Client()); err != nil {
+		t.Fatalf("cached call: %v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("expected exactly 1 network hit, got %d", hits)
+	}
+}
+
+func TestEnsureFileHTTPErrorNoPartialLeft(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+	dest := t.TempDir() + "/mtp.gguf"
+	if _, err := EnsureFile(srv.URL, dest, srv.Client()); err == nil {
+		t.Fatal("want error on HTTP 404")
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatalf("a failed download must not leave a file at dest")
 	}
 }
 

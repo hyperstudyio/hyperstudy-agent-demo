@@ -70,6 +70,30 @@ func TestResolveUnknownBareWordPassesThrough(t *testing.T) {
 	}
 }
 
+func TestMTPURL(t *testing.T) {
+	cases := []struct {
+		key  string
+		want string
+	}{
+		{"gemma4-moe", "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf"},
+		{"gemma4-4b", "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/MTP/mtp-gemma-4-E4B-it-Q8_0.gguf"},
+		{"qwen3.6-moe", ""}, // no MTP drafter
+	}
+	for _, c := range cases {
+		spec, _ := Resolve(c.key)
+		if got := spec.MTPURL(); got != c.want {
+			t.Errorf("%s: got MTPURL %q want %q", c.key, got, c.want)
+		}
+	}
+}
+
+func TestMTPURLRawRefIsEmpty(t *testing.T) {
+	spec, _ := Resolve("unsloth/Foo-GGUF:Q4_K_M")
+	if got := spec.MTPURL(); got != "" {
+		t.Errorf("raw ref should have no MTP URL, got %q", got)
+	}
+}
+
 func TestPresetKeysSorted(t *testing.T) {
 	keys := PresetKeys()
 	if len(keys) != len(Presets) {

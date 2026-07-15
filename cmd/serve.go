@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -33,7 +35,8 @@ var serveCmd = &cobra.Command{
 		parallel, _ := cmd.Flags().GetInt("parallel")
 		ctx, _ := cmd.Flags().GetInt("ctx")
 		regen, _ := cmd.Flags().GetBool("regenerate-key")
-		noThinking, _ := cmd.Flags().GetBool("no-thinking")
+		mtp, _ := cmd.Flags().GetBool("mtp")
+		mtpFile, _ := cmd.Flags().GetString("mtp-file")
 
 		dir := config.DefaultDir()
 		cfg, err := config.Load(dir)
@@ -47,17 +50,41 @@ var serveCmd = &cobra.Command{
 			fmt.Printf("Generated API key (saved to %s/config.json):\n  %s\n\n", dir, cfg.APIKey)
 		}
 		info, _ := hw.Detect(hw.ExecRunner)
-		var ref, name string
+		var spec models.Spec
 		if modelFlag == "" {
-			spec := models.Pick(info)
-			ref, name = spec.HFRef, spec.Name
+			spec = models.Pick(info)
 		} else {
-			spec, isPreset := models.Resolve(modelFlag)
-			ref, name = spec.HFRef, spec.Name
+			var isPreset bool
+			spec, isPreset = models.Resolve(modelFlag)
 			if isPreset && (modelFlag == "gemma4-moe" || modelFlag == "gemma4-4b") {
 				fmt.Fprintln(cmd.ErrOrStderr(), "Note: Gemma 4 is a reasoning model — give agents adequate max_tokens (>=256) so it doesn't exhaust its budget before the tool call. Single-turn tool calling works well; a known multi-turn issue (llama.cpp#25072) doesn't affect HyperStudy's single-turn agent decisions. Run `hyperstudy-agent verify` to confirm on your hardware.")
 			}
 		}
+		ref, name := spec.HFRef, spec.Name
+
+		// Resolve the MTP draft (speculative decoding) if requested. --mtp-file
+		// overrides with a local path; otherwise --mtp fetches the preset's
+		// co-trained draft once and caches it under the config dir.
+		var mtpPath string
+		if mtpFile != "" {
+			mtpPath = mtpFile
+		} else if mtp {
+			url := spec.MTPURL()
+			if url == "" {
+				return fmt.Errorf("--mtp: model %q has no known MTP draft — pass --mtp-file <path.gguf> with your own draft", name)
+			}
+			dest := filepath.Join(dir, "mtp", path.Base(spec.MTPFile))
+			fmt.Printf("Speculative decoding: fetching MTP draft (~0.5GB, one-time)...\n  %s\n", url)
+			p, err := llama.EnsureFile(url, dest, &http.Client{Timeout: 30 * time.Minute})
+			if err != nil {
+				return fmt.Errorf("fetch MTP draft: %w", err)
+			}
+			mtpPath = p
+		}
+		if mtpPath != "" {
+			fmt.Fprintln(cmd.ErrOrStderr(), "Speculative decoding (MTP) ENABLED — lossless; ~1.4–2.3x faster on gemma4, agent/long-context workloads benefit most.")
+		}
+
 		cfg.Model, cfg.Port = ref, port
 		if err := cfg.Save(dir); err != nil {
 			return err
@@ -67,7 +94,7 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 		fmt.Printf("Hardware: %s/%s ram=%dGB vram=%dGB spark=%v\nModel:    %s (%s)\n\n", info.OS, info.Arch, info.RAMGB, info.VRAMGB, info.IsSpark(), name, ref)
-		proc, err := llama.Start(bin, llama.LaunchOpts{HFRef: ref, APIKey: cfg.APIKey, Port: port, Parallel: parallel, Ctx: ctx, NoThinking: noThinking})
+		proc, err := llama.Start(bin, llama.LaunchOpts{HFRef: ref, APIKey: cfg.APIKey, Port: port, Parallel: parallel, Ctx: ctx, MTPFile: mtpPath})
 		if err != nil {
 			return err
 		}
@@ -105,6 +132,7 @@ func init() {
 	serveCmd.Flags().Int("parallel", 8, "concurrent slots (-np)")
 	serveCmd.Flags().Int("ctx", 32768, "total context shared across slots (-c)")
 	serveCmd.Flags().Bool("regenerate-key", false, "rotate the API key")
-	serveCmd.Flags().Bool("no-thinking", false, "disable reasoning-model 'thinking' (faster; for models like Gemma 4/Qwen3 that reason before responding)")
+	serveCmd.Flags().Bool("mtp", false, "enable speculative decoding via the model's MTP draft (gemma4 presets only; lossless, ~1.4-2.3x faster). Fetches the ~0.5GB draft once")
+	serveCmd.Flags().String("mtp-file", "", "path to a local MTP draft GGUF for speculative decoding (overrides --mtp's auto-fetch; use for non-preset models)")
 	RootCmd.AddCommand(serveCmd)
 }
