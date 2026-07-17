@@ -3,6 +3,12 @@ name: Sync Release Notes to Docs
 on:
   release:
     types: [published]
+  # goreleaser publishes releases with GITHUB_TOKEN, whose events don't
+  # trigger other workflows — so also fire when the Release workflow
+  # completes (head_branch is the tag for tag-push runs).
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -12,6 +18,8 @@ on:
 jobs:
   sync-release-notes:
     runs-on: ubuntu-latest
+    # For workflow_run triggers, only sync after a successful Release build
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Get release info
         id: release
@@ -19,8 +27,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_TAG: ${{ github.event.inputs.tag }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          WORKFLOW_RUN_TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
-          TAG="${INPUT_TAG:-$RELEASE_TAG}"
+          TAG="${INPUT_TAG:-${RELEASE_TAG:-$WORKFLOW_RUN_TAG}}"
           if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "Refusing to sync non-semver tag: $TAG" >&2
             exit 1
