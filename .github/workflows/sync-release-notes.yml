@@ -1,0 +1,122 @@
+name: Sync Release Notes to Docs
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to sync (e.g., v0.2.0)'
+        required: true
+
+jobs:
+  sync-release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get release info
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          TAG="${INPUT_TAG:-$RELEASE_TAG}"
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Refusing to sync non-semver tag: $TAG" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+          # Get release body and published date
+          RELEASE_JSON=$(gh release view "$TAG" --repo ${{ github.repository }} --json body,publishedAt)
+          BODY=$(echo "$RELEASE_JSON" | jq -r '.body')
+          PUBLISHED_AT=$(echo "$RELEASE_JSON" | jq -r '.publishedAt')
+          RELEASE_DATE=$(date -d "$PUBLISHED_AT" +"%Y-%m-%d" 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$PUBLISHED_AT" +"%Y-%m-%d" 2>/dev/null || echo "$PUBLISHED_AT")
+
+          echo "date=$RELEASE_DATE" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Checkout hyperstudy-docs
+        uses: actions/checkout@v4
+        with:
+          repository: hyperstudyio/hyperstudy-docs
+          token: ${{ secrets.DOCS_REPO_TOKEN }}
+          path: docs-repo
+          persist-credentials: false
+
+      - name: Check if release already exists
+        id: check
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          FILE="docs-repo/docs/experimenters/ai-agents/custom-endpoints.md"
+
+          if grep -q "### $TAG" "$FILE" 2>/dev/null; then
+            echo "Release $TAG already exists in docs"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Release $TAG not found in docs, will add"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update release notes
+        if: steps.check.outputs.exists == 'false'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          DATE: ${{ steps.release.outputs.date }}
+          BODY: ${{ steps.release.outputs.body }}
+        run: |
+          FILE="docs-repo/docs/experimenters/ai-agents/custom-endpoints.md"
+
+          # Create the new release entry in a temp file
+          {
+            echo "### $TAG"
+            echo ""
+            echo "**Released:** $DATE"
+            echo ""
+            echo "$BODY"
+            echo ""
+            echo "---"
+          } > /tmp/release_entry.txt
+
+          # Insert after RELEASE_NOTES_START marker using awk
+          awk '
+            /<!-- RELEASE_NOTES_START -->/ {
+              print
+              print ""
+              while ((getline line < "/tmp/release_entry.txt") > 0) {
+                print line
+              }
+              close("/tmp/release_entry.txt")
+              print ""
+              next
+            }
+            { print }
+          ' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
+
+          echo "Updated $FILE with release $TAG"
+
+      - name: Commit and push via API
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_REPO_TOKEN }}
+        run: |
+          FILE_PATH="docs/experimenters/ai-agents/custom-endpoints.md"
+          TAG="${{ steps.release.outputs.tag }}"
+
+          # Get the current file SHA (required for updates)
+          FILE_SHA=$(gh api "repos/hyperstudyio/hyperstudy-docs/contents/${FILE_PATH}" --jq '.sha')
+
+          # Base64-encode the updated file content
+          CONTENT_B64=$(base64 -w 0 "docs-repo/${FILE_PATH}")
+
+          # Push via the Contents API
+          gh api --method PUT "repos/hyperstudyio/hyperstudy-docs/contents/${FILE_PATH}" \
+            -f message="Update hyperstudy-agent release notes for ${TAG}" \
+            -f content="${CONTENT_B64}" \
+            -f sha="${FILE_SHA}" \
+            -f "committer[name]=github-actions[bot]" \
+            -f "committer[email]=github-actions[bot]@users.noreply.github.com"
+
+          echo "Successfully pushed release notes for ${TAG} via API"

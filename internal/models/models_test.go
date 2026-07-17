@@ -3,7 +3,7 @@ package models
 import (
 	"testing"
 
-	"github.com/hyperstudyio/hyperstudy-agent-demo/internal/hw"
+	"github.com/hyperstudyio/hyperstudy-agent/internal/hw"
 )
 
 func TestLadder(t *testing.T) {

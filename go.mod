@@ -1,4 +1,4 @@
-module github.com/hyperstudyio/hyperstudy-agent-demo
+module github.com/hyperstudyio/hyperstudy-agent
 
 go 1.26.5
 

@@ -3,7 +3,7 @@ package models
 import (
 	"sort"
 
-	"github.com/hyperstudyio/hyperstudy-agent-demo/internal/hw"
+	"github.com/hyperstudyio/hyperstudy-agent/internal/hw"
 )
 
 type Spec struct {

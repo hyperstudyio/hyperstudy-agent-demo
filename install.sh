@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Install the latest hyperstudy-agent release binary into /usr/local/bin.
 #
-#   curl -fsSL https://raw.githubusercontent.com/hyperstudyio/hyperstudy-agent-demo/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/hyperstudyio/hyperstudy-agent/main/install.sh | bash
 #
 set -euo pipefail
 
-REPO="hyperstudyio/hyperstudy-agent-demo"
+REPO="hyperstudyio/hyperstudy-agent"
 BIN_NAME="hyperstudy-agent"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 

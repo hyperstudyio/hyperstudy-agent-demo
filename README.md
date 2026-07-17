@@ -9,24 +9,24 @@ Pick one:
 **A. Install script** (downloads a prebuilt binary into `/usr/local/bin`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hyperstudyio/hyperstudy-agent-demo/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hyperstudyio/hyperstudy-agent/main/install.sh | bash
 ```
 
-**B. Download a binary** from the [releases page](https://github.com/hyperstudyio/hyperstudy-agent-demo/releases) — `darwin/arm64`, `linux/amd64`, or `linux/arm64` — untar it, and put `hyperstudy-agent` on your `PATH`.
+**B. Download a binary** from the [releases page](https://github.com/hyperstudyio/hyperstudy-agent/releases) — `darwin/arm64`, `linux/amd64`, or `linux/arm64` — untar it, and put `hyperstudy-agent` on your `PATH`.
 
 **C. Build from source** (needs [Go](https://go.dev/dl/) 1.26+):
 
 ```bash
-git clone https://github.com/hyperstudyio/hyperstudy-agent-demo
-cd hyperstudy-agent-demo
+git clone https://github.com/hyperstudyio/hyperstudy-agent
+cd hyperstudy-agent
 go build -o hyperstudy-agent .
 sudo mv hyperstudy-agent /usr/local/bin/   # optional — or run ./hyperstudy-agent in place
 ```
 
-Or as a one-liner (installs to `$(go env GOPATH)/bin` as `hyperstudy-agent-demo`):
+Or as a one-liner (installs to `$(go env GOPATH)/bin` as `hyperstudy-agent`):
 
 ```bash
-go install github.com/hyperstudyio/hyperstudy-agent-demo@latest
+go install github.com/hyperstudyio/hyperstudy-agent@latest
 ```
 
 **Prerequisite:** the `serve` command also needs `llama-server` (llama.cpp) — `brew install llama.cpp` on macOS, or see [Hardware notes](#hardware-notes) for Linux/GPU/Spark. `tunnel` needs `cloudflared`. Verify your install with `hyperstudy-agent --version`.

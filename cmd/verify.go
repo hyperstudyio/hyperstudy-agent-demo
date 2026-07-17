@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/hyperstudyio/hyperstudy-agent-demo/internal/config"
-	"github.com/hyperstudyio/hyperstudy-agent-demo/internal/verify"
+	"github.com/hyperstudyio/hyperstudy-agent/internal/config"
+	"github.com/hyperstudyio/hyperstudy-agent/internal/verify"
 )
 
 var verifyCmd = &cobra.Command{

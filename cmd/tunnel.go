@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/hyperstudyio/hyperstudy-agent-demo/internal/config"
+	"github.com/hyperstudyio/hyperstudy-agent/internal/config"
 )
 
 var tunnelURLRe = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`)
